@@ -34,7 +34,7 @@ std::uint8_t buf[bitpack::max_encoded_bytes];
 std::size_t size = bitpack::encode_pfor(deltas, buf);   // header + packed bits (+ exceptions)
 
 std::uint32_t back[128];
-bitpack::decode_delta(buf, /*base*/ 0, back);            // back == ids
+bitpack::decode_delta(buf, size, /*base*/ 0, back);      // back == ids; 0 if malformed
 ```
 
 Fixed-width calls skip the header:

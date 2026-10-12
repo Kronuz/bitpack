@@ -321,19 +321,20 @@ inline constexpr auto unpack_scalar_table = make_table<unpack_scalar_fn, unpack_
 
 }  // namespace detail
 
-// Packs 128 values (each must fit in `bits`) into packed_bytes(bits) bytes. `out` needs no alignment.
+// Packs 128 values (each must fit in `bits`) into packed_bytes(bits) bytes. `out` needs no
+// alignment. Widths above 32 write nothing.
 inline void pack(const std::uint32_t* in, unsigned bits, std::uint8_t* out) noexcept {
-	detail::pack_table[bits](in, out);
+	if (bits <= 32) { detail::pack_table[bits](in, out); }
 }
 
-// Unpacks 128 values packed at `bits`.
+// Unpacks 128 values packed at `bits` from packed_bytes(bits) bytes. Widths above 32 write nothing.
 inline void unpack(const std::uint8_t* in, unsigned bits, std::uint32_t* out) noexcept {
-	detail::unpack_table[bits](in, out);
+	if (bits <= 32) { detail::unpack_table[bits](in, out); }
 }
 
 // Unpacks 128 deltas and prefix-sums them onto `base`: out[i] = base + d[0] + ... + d[i].
 inline void unpack_delta(const std::uint8_t* in, unsigned bits, std::uint32_t base, std::uint32_t* out) noexcept {
-	detail::unpack_delta_table[bits](in, base, out);
+	if (bits <= 32) { detail::unpack_delta_table[bits](in, base, out); }
 }
 
 // Writes d[i] = in[i] - in[i-1] (d[0] = in[0] - base) for a strictly or weakly increasing block.
@@ -440,31 +441,43 @@ inline std::size_t encode_pfor(const std::uint32_t* in, std::uint8_t* out) noexc
 	return std::size_t(p - out);
 }
 
-// Decodes a block written by encode_for or encode_pfor; returns the bytes consumed.
-inline std::size_t decode(const std::uint8_t* in, std::uint32_t* out) noexcept {
+// Decodes a block written by encode_for or encode_pfor from the size bytes at in. Returns
+// the bytes consumed, or 0 when the block is malformed or truncated; out is then
+// unspecified. Safe on arbitrary input.
+inline std::size_t decode(const std::uint8_t* in, std::size_t size, std::uint32_t* out) noexcept {
+	if (size < 1) { return 0; }
 	const std::uint8_t header = in[0];
 	if (header & constant_flag) {
+		if ((header & ~constant_flag) != 0 || size < 5) { return 0; }
 		std::uint32_t v;
 		std::memcpy(&v, in + 1, 4);
 		for (std::size_t i = 0; i < block_size; ++i) { out[i] = v; }
 		return 5;
 	}
 	const unsigned bits = header & 0x3f;
+	if (bits > 32) { return 0; }
 	if (!(header & exceptions_flag)) {
+		if (size < 1 + packed_bytes(bits)) { return 0; }
 		unpack(in + 1, bits, out);
 		return 1 + packed_bytes(bits);
 	}
+	if (size < 2) { return 0; }
 	const std::size_t n = in[1];
+	if (n > block_size || size < 2 + packed_bytes(bits) + n + 1) { return 0; }
 	const std::uint8_t* p = in + 2;
 	unpack(p, bits, out);
 	p += packed_bytes(bits);
 	const std::uint8_t* positions = p;
 	p += n;
 	const unsigned high_bits = *p++;
+	if (bits + high_bits > 32 || (n && high_bits == 0)) { return 0; }
+	const std::size_t high_bytes = (n * high_bits + 7) / 8;
+	if (std::size_t(in + size - p) < high_bytes) { return 0; }
 	std::uint64_t acc = 0;
 	unsigned filled = 0;
 	const std::uint32_t high_mask = high_bits == 32 ? ~0u : (1u << high_bits) - 1;
 	for (std::size_t i = 0; i < n; ++i) {
+		if (positions[i] >= block_size) { return 0; }
 		while (filled < high_bits) { acc |= std::uint64_t(*p++) << filled; filled += 8; }
 		out[positions[i]] |= std::uint32_t(acc & high_mask) << bits;
 		acc >>= high_bits;
@@ -473,15 +486,18 @@ inline std::size_t decode(const std::uint8_t* in, std::uint32_t* out) noexcept {
 	return std::size_t(p - in);
 }
 
-// Decodes a block of deltas and prefix-sums them onto `base`.
-inline std::size_t decode_delta(const std::uint8_t* in, std::uint32_t base, std::uint32_t* out) noexcept {
-	const std::uint8_t header = in[0];
-	if (!(header & (constant_flag | exceptions_flag))) {
-		unpack_delta(in + 1, header & 0x3f, base, out);
-		return 1 + packed_bytes(header & 0x3f);
+// Decodes a block of deltas and prefix-sums them onto `base`; returns 0 when malformed.
+inline std::size_t decode_delta(const std::uint8_t* in, std::size_t size, std::uint32_t base, std::uint32_t* out) noexcept {
+	if (size >= 1 && !(in[0] & (constant_flag | exceptions_flag))) {
+		const unsigned bits = in[0] & 0x3f;
+		if (bits > 32 || size < 1 + packed_bytes(bits)) { return 0; }
+		unpack_delta(in + 1, bits, base, out);
+		return 1 + packed_bytes(bits);
 	}
-	std::size_t used = decode(in, out);
-	for (std::size_t i = 0; i < block_size; ++i) { out[i] = base += out[i]; }
+	std::size_t used = decode(in, size, out);
+	if (used) {
+		for (std::size_t i = 0; i < block_size; ++i) { out[i] = base += out[i]; }
+	}
 	return used;
 }
 
