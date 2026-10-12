@@ -441,6 +441,25 @@ inline std::size_t encode_pfor(const std::uint32_t* in, std::uint8_t* out) noexc
 	return std::size_t(p - out);
 }
 
+// The size of the block written by encode_for or encode_pfor at in, read from its headers
+// without decoding it (for stepping over blocks); 0 when malformed or truncated.
+inline std::size_t encoded_size(const std::uint8_t* in, std::size_t size) noexcept {
+	if (size < 1) { return 0; }
+	const std::uint8_t header = in[0];
+	if (header & constant_flag) { return (header & ~constant_flag) == 0 && size >= 5 ? 5 : 0; }
+	const unsigned bits = header & 0x3f;
+	if (bits > 32) { return 0; }
+	if (!(header & exceptions_flag)) { return size >= 1 + packed_bytes(bits) ? 1 + packed_bytes(bits) : 0; }
+	if (size < 2) { return 0; }
+	const std::size_t n = in[1];
+	const std::size_t high_at = 2 + packed_bytes(bits) + n;
+	if (n > block_size || size < high_at + 1) { return 0; }
+	const unsigned high_bits = in[high_at];
+	if (bits + high_bits > 32 || (n && high_bits == 0)) { return 0; }
+	const std::size_t total = high_at + 1 + (n * high_bits + 7) / 8;
+	return size >= total ? total : 0;
+}
+
 // Decodes a block written by encode_for or encode_pfor from the size bytes at in. Returns
 // the bytes consumed, or 0 when the block is malformed or truncated; out is then
 // unspecified. Safe on arbitrary input.

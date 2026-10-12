@@ -1,5 +1,6 @@
-// libFuzzer target: arbitrary bytes never make decode/decode_delta read or write out of
-// bounds or claim more bytes than given, and any 128 values round-trip through FOR and PFOR.
+// libFuzzer target: arbitrary bytes never make decode, decode_delta, or encoded_size read or
+// write out of bounds or claim more bytes than given; encoded_size agrees with decode; and
+// any 128 values round-trip through FOR and PFOR.
 #include "bitpack.hh"
 
 #include <cstdlib>
@@ -7,7 +8,10 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
 	std::uint32_t out[bitpack::block_size];
-	if (bitpack::decode(data, size, out) > size) { std::abort(); }
+	const std::size_t used = bitpack::decode(data, size, out);
+	if (used > size) { std::abort(); }
+	const std::size_t step = bitpack::encoded_size(data, size);
+	if (step > size || (used && step != used)) { std::abort(); }
 	if (bitpack::decode_delta(data, size, 1, out) > size) { std::abort(); }
 
 	std::uint32_t in[bitpack::block_size] = {};

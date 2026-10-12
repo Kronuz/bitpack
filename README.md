@@ -17,6 +17,8 @@ One header, `bitpack.hh`:
   minimizes the encoded size and stores the few larger values as exceptions. A
   block whose values are all equal (for example, all frequencies 1) encodes in
   5 bytes.
+- `encoded_size` reads an encoded block's size from its headers without decoding
+  it, for stepping over blocks laid out back to back.
 
 SSE2 on x86-64 and NEON on AArch64 decode four integers per instruction; a portable
 path covers everything else. All three read and write the same bytes.

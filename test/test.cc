@@ -90,8 +90,14 @@ int main() {
 		CHECK(bitpack::decode(p.data(), pn, b.data()) == pn);
 		CHECK(a == in);
 		CHECK(b == in);
+		CHECK(bitpack::encoded_size(f.data(), fn) == fn);
+		CHECK(bitpack::encoded_size(p.data(), pn) == pn);
+		CHECK(bitpack::encoded_size(p.data(), bitpack::max_encoded_bytes) == pn);
 		block scratch{};
-		for (std::size_t cut = 0; cut < pn; ++cut) { CHECK(bitpack::decode(p.data(), cut, scratch.data()) == 0); }
+		for (std::size_t cut = 0; cut < pn; ++cut) {
+			CHECK(bitpack::decode(p.data(), cut, scratch.data()) == 0);
+			CHECK(bitpack::encoded_size(p.data(), cut) == 0);
+		}
 		if (round % 5 == 1) { CHECK(fn == 5); }
 	}
 
