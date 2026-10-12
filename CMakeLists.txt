@@ -36,7 +36,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(FetchContent)
     FetchContent_Declare(simdcomp_ref
       GIT_REPOSITORY https://github.com/lemire/SIMDCompressionAndIntersection.git
-      GIT_TAG        master)
+      GIT_TAG        b809f38b57fa65384166c7c1d83056395a1ff3e5)  # the commit the README numbers use
     if(POLICY CMP0169)
       cmake_policy(SET CMP0169 OLD)  # populate only; the reference is not a CMake subproject here
     endif()
