@@ -206,6 +206,9 @@ inline void pack_simd(const std::uint32_t* in32, std::uint8_t* out32) noexcept {
 
 BITPACK_INLINE uint32x4_t load_u32x4(const std::uint8_t* p) noexcept { return vreinterpretq_u32_u8(vld1q_u8(p)); }
 BITPACK_INLINE void store_u32x4(std::uint8_t* p, uint32x4_t v) noexcept { vst1q_u8(p, vreinterpretq_u8_u32(v)); }
+// A function, not the intrinsic: Apple's arm_neon.h defines vst1q_u32 as a macro, which
+// splits template arguments at their commas.
+BITPACK_INLINE void store_row(std::uint32_t* p, uint32x4_t v) noexcept { vst1q_u32(p, v); }
 
 template <unsigned B, unsigned R>
 BITPACK_INLINE uint32x4_t unpack_row(const std::uint8_t* in, uint32x4_t mask) noexcept {
@@ -220,7 +223,7 @@ BITPACK_INLINE uint32x4_t unpack_row(const std::uint8_t* in, uint32x4_t mask) no
 
 template <unsigned B, unsigned... R>
 BITPACK_INLINE void unpack_rows(const std::uint8_t* in, std::uint32_t* out, uint32x4_t mask, std::integer_sequence<unsigned, R...>) noexcept {
-	(vst1q_u32(out + 4 * R, unpack_row<B, R>(in, mask)), ...);
+	(store_row(out + 4 * R, unpack_row<B, R>(in, mask)), ...);
 }
 
 template <unsigned B>
@@ -243,7 +246,7 @@ BITPACK_INLINE uint32x4_t prefix4(uint32x4_t v, uint32x4_t& carry) noexcept {
 
 template <unsigned B, unsigned... R>
 BITPACK_INLINE void unpack_delta_rows(const std::uint8_t* in, std::uint32_t* out, uint32x4_t mask, uint32x4_t& carry, std::integer_sequence<unsigned, R...>) noexcept {
-	(vst1q_u32(out + 4 * R, prefix4(unpack_row<B, R>(in, mask), carry)), ...);
+	(store_row(out + 4 * R, prefix4(unpack_row<B, R>(in, mask), carry)), ...);
 }
 
 template <unsigned B>
