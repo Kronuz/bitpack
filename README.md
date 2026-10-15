@@ -1,5 +1,7 @@
 # bitpack
 
+[![CI](https://github.com/Kronuz/bitpack/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/bitpack/actions/workflows/ci.yml)
+
 Bit packing for blocks of 128 unsigned 32-bit integers, for C++20. Header-only, no
 dependencies. It is the integer codec under search-engine postings: doc-id deltas,
 term frequencies, and positions.
