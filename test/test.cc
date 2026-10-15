@@ -2,6 +2,7 @@
 // delta decoding, and the FOR/PFOR block codecs.
 #include "bitpack.hh"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
@@ -23,6 +24,32 @@ static block random_block(std::mt19937_64& rng, unsigned bits) {
 }
 
 int main() {
+	// 64-bit values at every width 0-64: round trips, the minimum width, the block's size,
+	// and the layout (low halves at min(bits, 32), then high halves at bits - 32).
+	{
+		std::mt19937_64 rng(64);
+		for (unsigned bits = 0; bits <= 64; ++bits) {
+			for (int round = 0; round < 8; ++round) {
+				std::vector<std::uint64_t> in(128);
+				const std::uint64_t mask = bits == 64 ? ~0ull : (1ull << bits) - 1;
+				for (auto& v : in) { v = rng() & mask; }
+				if (bits) { in[round % 128] = mask; }  // the width is reached
+				CHECK(bitpack::max_bits(in.data()) == bits);
+				std::vector<std::uint8_t> packed(bitpack::packed_bytes(bits) + 1, 0xA5);
+				bitpack::pack(in.data(), bits, packed.data());
+				CHECK(packed.back() == 0xA5);  // exactly packed_bytes(bits)
+				std::vector<std::uint64_t> out(128, 7);
+				bitpack::unpack(packed.data(), bits, out.data());
+				CHECK(out == in);
+				std::uint32_t low[128], high[128], back[128];
+				for (int k = 0; k < 128; ++k) { low[k] = std::uint32_t(in[k]); high[k] = std::uint32_t(in[k] >> 32); }
+				bitpack::unpack(packed.data(), bits < 32 ? bits : 32, back);
+				CHECK(std::equal(back, back + 128, low));
+				if (bits > 32) { bitpack::unpack(packed.data() + bitpack::packed_bytes(32), bits - 32, back); CHECK(std::equal(back, back + 128, high)); }
+			}
+		}
+	}
+
 	std::mt19937_64 rng(20261011);
 	static_assert(bitpack::packed_bytes(7) == 112);
 

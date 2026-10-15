@@ -348,6 +348,33 @@ inline void delta_encode(std::uint32_t base, const std::uint32_t* in, std::uint3
 	}
 }
 
+// 64-bit values at widths 0 to 64, for doc-value columns: the low 32 bits of each value
+// pack at min(bits, 32), then the high bits at bits - 32, both through the 32-bit packers.
+// A block at width `bits` is still packed_bytes(bits) bytes. Widths above 64 write nothing.
+inline unsigned max_bits(const std::uint64_t* in) noexcept {
+	std::uint64_t acc = 0;
+	for (std::size_t i = 0; i < block_size; ++i) { acc |= in[i]; }
+	return 64 - unsigned(std::countl_zero(acc));
+}
+inline void pack(const std::uint64_t* in, unsigned bits, std::uint8_t* out) noexcept {
+	if (bits > 64) { return; }
+	std::uint32_t half[block_size];
+	for (std::size_t i = 0; i < block_size; ++i) { half[i] = std::uint32_t(in[i]); }
+	pack(half, bits < 32 ? bits : 32, out);
+	if (bits <= 32) { return; }
+	for (std::size_t i = 0; i < block_size; ++i) { half[i] = std::uint32_t(in[i] >> 32); }
+	pack(half, bits - 32, out + packed_bytes(32));
+}
+inline void unpack(const std::uint8_t* in, unsigned bits, std::uint64_t* out) noexcept {
+	if (bits > 64) { return; }
+	std::uint32_t half[block_size];
+	unpack(in, bits < 32 ? bits : 32, half);
+	for (std::size_t i = 0; i < block_size; ++i) { out[i] = half[i]; }
+	if (bits <= 32) { return; }
+	unpack(in + packed_bytes(32), bits - 32, half);
+	for (std::size_t i = 0; i < block_size; ++i) { out[i] |= std::uint64_t(half[i]) << 32; }
+}
+
 // Scalar implementations of the same layout, for testing and portable baselines.
 inline void pack_scalar(const std::uint32_t* in, unsigned bits, std::uint8_t* out) noexcept {
 	detail::pack_scalar_table[bits](in, out);
