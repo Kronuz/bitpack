@@ -1,12 +1,17 @@
 # bitpack
 
 [![CI](https://github.com/Kronuz/bitpack/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/bitpack/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
+![Header-only](https://img.shields.io/badge/header--only-yes-green.svg)
 
-Bit packing for blocks of 128 unsigned 32-bit integers, for C++20. Header-only, no
-dependencies. It is the integer codec under search-engine postings: doc-id deltas,
-term frequencies, and positions.
+Bit packing for blocks of 128 unsigned 32-bit integers, for C++20, decoding at
+SIMD-BP128 speed. It is the integer codec under search-engine postings: doc-id
+deltas, term frequencies, and positions.
 
-## What it is
+![bitpack: 128 integers in four lanes, packed at b bits into 16 × b bytes](docs/bitpack.svg)
+
+## ✨ Highlights
 
 One header, `bitpack.hh`:
 
@@ -25,7 +30,23 @@ One header, `bitpack.hh`:
 SSE2 on x86-64 and NEON on AArch64 decode four integers per instruction; a portable
 path covers everything else. All three read and write the same bytes.
 
-## Usage
+## 📦 Installation
+
+Requires a C++20 compiler and a little-endian host (x86-64 or AArch64); CMake 3.14
+or newer for the CMake route. CI builds it on Linux (x86_64, arm64), macOS (arm64,
+x86_64), and FreeBSD, plus ASan, UBSan, and TSan builds.
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(bitpack
+  GIT_REPOSITORY https://github.com/Kronuz/bitpack.git
+  GIT_TAG        main)
+FetchContent_MakeAvailable(bitpack)
+
+target_link_libraries(my_app PRIVATE bitpack::bitpack)
+```
+
+## 🚀 Quick start
 
 ```cpp
 #include "bitpack.hh"
@@ -50,7 +71,7 @@ bitpack::pack(deltas, bits, packed);
 bitpack::unpack_delta(packed, bits, 0, back);
 ```
 
-## Layout
+## 🧩 Layout
 
 Integer `j` lives in lane `j % 4`, row `j / 4`. Each lane packs its 32 rows into
 `b` 32-bit words, and word `w` of the four lanes is 128-bit word `w`. One 4-lane
@@ -58,7 +79,7 @@ register therefore decodes integers `4r .. 4r+3` in order, and the delta prefix 
 runs in the register. The bytes are identical to Lemire's SIMD-BP128 layout; the
 benchmark checks this at every width.
 
-## Performance
+## ⚡ Performance
 
 Decoding, in integers per nanosecond, on an Intel i9-9980HK (macOS, Apple clang
 `-O3`, cache-resident blocks). The host was running other builds, so absolute
@@ -85,7 +106,7 @@ cmake --build build && build/bitpack_bench
 `BITPACK_BENCH_REFERENCE` fetches lemire/SIMDCompressionAndIntersection
 (Apache-2.0) for the benchmark only; the library never links it.
 
-## Build and test
+## 🛠️ Building and testing
 
 ```sh
 cmake -S . -B build && cmake --build build && ctest --test-dir build
@@ -95,12 +116,28 @@ The tests round-trip every width at every position, require SIMD and scalar outp
 to be byte-identical, and exercise FOR, PFOR, constant blocks, and delta decoding.
 `bitpack_portable_test` builds with `BITPACK_NO_SIMD` to cover the portable path.
 
-## Limits
+## 🎯 When to use it
+
+- ✅ Postings, id lists, and other runs of small integers, decoded in hot loops.
+- ❌ Big-endian hosts, or variable-length tails; see the limits below.
+
+### Limits
 
 - Little-endian hosts only (x86-64, AArch64): the on-disk words are little-endian.
 - Blocks are exactly 128 integers. Shorter tails belong to a variable-length
   integer codec such as [varint](https://github.com/Kronuz/varint).
 
-## License
+## 📚 Documentation
 
-MIT. See [LICENSE](LICENSE).
+- [ARCHITECTURE.md](ARCHITECTURE.md): the layout, the SIMD paths, and the codecs.
+- [AGENTS.md](AGENTS.md): repository map and invariants.
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. The encoded bytes are a storage format and
+must not change; read [AGENTS.md](AGENTS.md) first. CI must pass on every
+platform.
+
+## 📄 License
+
+MIT, Copyright (c) 2026 Germán Méndez Bravo. See [LICENSE](LICENSE).

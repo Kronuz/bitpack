@@ -1,0 +1,21 @@
+# bitpack: 128 integers in four lanes; one SIMD register decodes four in order.
+# Render: d2 --layout elk --sketch --theme 302 docs/bitpack.d2 docs/bitpack.svg
+direction: right
+block: block of 128 {
+  label: "128 × uint32\nat b bits each"
+}
+lanes: four lanes {
+  l0: "lane 0: 0, 4, 8, …"
+  l1: "lane 1: 1, 5, 9, …"
+  l2: "lane 2: 2, 6, 10, …"
+  l3: "lane 3: 3, 7, 11, …"
+}
+bytes: 16 × b bytes {
+  label: "16 × b bytes\n(SIMD-BP128 layout)"
+}
+codecs: codecs {
+  label: "FOR · PFOR · constant\n1-byte header"
+}
+block -> lanes
+lanes -> bytes: "pack"
+bytes -> codecs {style.stroke-dash: 3}

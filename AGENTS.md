@@ -7,6 +7,7 @@ bitpack.hh         The library: layout, SSE2/NEON/portable pack and unpack, delt
 test/test.cc       Round trips, SIMD/scalar byte equality, delta, codecs. Built twice: SIMD and BITPACK_NO_SIMD.
 bench/bench.cc     Decode throughput per width; optional SIMD-BP128 reference and byte-equality check.
 CMakeLists.txt     INTERFACE target bitpack::bitpack; tests and bench when top-level.
+docs/bitpack.d2     README diagram; render: d2 --layout elk --sketch --theme 302 docs/bitpack.d2 docs/bitpack.svg
 ```
 
 ## Invariants
