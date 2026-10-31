@@ -117,6 +117,9 @@ cmake -S . -B build && cmake --build build && ctest --test-dir build
 The tests round-trip every width at every position, require SIMD and scalar output
 to be byte-identical, and exercise FOR, PFOR, constant blocks, and delta decoding.
 `bitpack_portable_test` builds with `BITPACK_NO_SIMD` to cover the portable path.
+`bitpack_differential` compares `pack`, `unpack` and `unpack_delta` with a frozen copy of the
+previous kernels (`test/bitpack_v0.hh`) at every width, in the SIMD and portable builds.
+`bench/asm_count.py` counts the input loads of each unpack kernel in the generated assembly.
 
 ## 🎯 When to use it
 
