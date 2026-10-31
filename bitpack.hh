@@ -122,6 +122,15 @@ inline void unpack_scalar(const std::uint8_t* in, std::uint32_t* out) noexcept {
 	}
 }
 
+// The unpack kernels walk a block's rows in order. Row r needs input word row::word and, when it
+// spills, the next one, and the following row then starts at that next word (a row advances by at
+// most one word), so a kernel holds one word in a register (`cur`), loads each input word exactly
+// once, and never has more than two live. The input is read through uint8_t (or __m128i), which may
+// alias the uint32_t output, so a word read where it is used is reloaded after every store: 44 vector
+// loads for 13 words at B = 13 (one per row plus one per spilling row), 32 loads of the single word
+// at B = 1. Staging all B words in an array avoids that but outgrows the register file (SSE2's 16
+// registers spill from B = 15).
+
 #if BITPACK_SSE
 
 template <unsigned B, unsigned R>
@@ -210,6 +219,8 @@ BITPACK_INLINE void store_u32x4(std::uint8_t* p, uint32x4_t v) noexcept { vst1q_
 // splits template arguments at their commas.
 BITPACK_INLINE void store_row(std::uint32_t* p, uint32x4_t v) noexcept { vst1q_u32(p, v); }
 
+// Row R of the block, loading the words it needs from `in`. The delta kernels use it: their carry
+// chain bounds them, so loading each word once does not speed them up.
 template <unsigned B, unsigned R>
 BITPACK_INLINE uint32x4_t unpack_row(const std::uint8_t* in, uint32x4_t mask) noexcept {
 	using row = detail::row<B, R>;
@@ -221,9 +232,28 @@ BITPACK_INLINE uint32x4_t unpack_row(const std::uint8_t* in, uint32x4_t mask) no
 	return v;
 }
 
+// Row R of the block. `cur` holds word row<B,R>::word on entry and the next row's word on
+// return; load(i) reads input word i.
+template <unsigned B, unsigned R, typename Load>
+BITPACK_INLINE uint32x4_t unpack_row(const Load& load, uint32x4_t& cur, uint32x4_t mask) noexcept {
+	using row = detail::row<B, R>;
+	uint32x4_t v;
+	if constexpr (row::shift == 0) { v = cur; } else { v = vshrq_n_u32(cur, row::shift); }
+	if constexpr (row::spills) {
+		cur = load(row::word + 1);
+		v = vorrq_u32(v, vshlq_n_u32(cur, 32 - row::shift));
+	} else if constexpr (R + 1 < 32) {
+		if constexpr (detail::row<B, R + 1>::word != row::word) { cur = load(row::word + 1); }
+	}
+	if constexpr (B < 32) { v = vandq_u32(v, mask); }
+	return v;
+}
+
 template <unsigned B, unsigned... R>
 BITPACK_INLINE void unpack_rows(const std::uint8_t* in, std::uint32_t* out, uint32x4_t mask, std::integer_sequence<unsigned, R...>) noexcept {
-	(store_row(out + 4 * R, unpack_row<B, R>(in, mask)), ...);
+	auto load = [in](unsigned i) { return load_u32x4(in + 16 * i); };
+	uint32x4_t cur = load(0);
+	(store_row(out + 4 * R, unpack_row<B, R>(load, cur, mask)), ...);
 }
 
 template <unsigned B>
