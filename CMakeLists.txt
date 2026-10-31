@@ -18,6 +18,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(bitpack_portable_test PRIVATE bitpack)
   target_compile_definitions(bitpack_portable_test PRIVATE BITPACK_NO_SIMD BITPACK_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
   add_test(NAME bitpack_portable COMMAND bitpack_portable_test)
+  # Live kernels against a frozen copy of the previous ones (SIMD and portable builds).
+  add_executable(bitpack_differential_test test/differential.cc)
+  target_link_libraries(bitpack_differential_test PRIVATE bitpack)
+  target_include_directories(bitpack_differential_test PRIVATE test)
+  add_test(NAME bitpack_differential COMMAND bitpack_differential_test)
+  add_executable(bitpack_differential_portable_test test/differential.cc)
+  target_link_libraries(bitpack_differential_portable_test PRIVATE bitpack)
+  target_include_directories(bitpack_differential_portable_test PRIVATE test)
+  target_compile_definitions(bitpack_differential_portable_test PRIVATE BITPACK_NO_SIMD)
+  add_test(NAME bitpack_differential_portable COMMAND bitpack_differential_portable_test)
 
   # libFuzzer target (Clang): cmake -DBITPACK_FUZZ=ON -DCMAKE_CXX_COMPILER=clang++
   option(BITPACK_FUZZ "Build the libFuzzer target" OFF)
