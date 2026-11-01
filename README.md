@@ -158,6 +158,7 @@ previous kernels (`test/bitpack_v0.hh`) at every width, in the SIMD and portable
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): the layout, the SIMD paths, and the codecs.
 - [AGENTS.md](AGENTS.md): repository map and invariants.
+- [docs/perf/unpack-loads.md](docs/perf/unpack-loads.md): how the unpack kernels read their input, per-width numbers, and the variants that do not help.
 - [CHANGELOG.md](CHANGELOG.md): what changed, with the timings.
 
 ## 🤝 Contributing

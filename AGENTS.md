@@ -8,6 +8,8 @@ test/test.cc       Round trips, SIMD/scalar byte equality, delta, codecs. Built 
 test/differential.cc  Live kernels against test/bitpack_v0.hh, a frozen copy of the previous ones (pack, unpack, unpack_delta, every width).
 bench/bench.cc     Decode throughput per width; optional SIMD-BP128 reference and byte-equality check.
 bench/asm_check.cc, bench/asm_count.py   Counts the input loads and stack spills of each unpack kernel in the generated asm (not run).
+bench/unpack_alias.cc   unpack throughput as the packed input's offset against the output moves through a page (4 KiB aliasing); a memcpy column at width 32.
+docs/perf/unpack-loads.md   Input loads per unpack kernel: method, per-width numbers, variants that do not help, open items.
 CMakeLists.txt     INTERFACE target bitpack::bitpack; tests and bench when top-level.
 docs/bitpack.d2     README diagram; render: d2 --layout elk --sketch --theme 302 docs/bitpack.d2 docs/bitpack.svg
 ```

@@ -41,6 +41,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   option(BITPACK_BENCH_REFERENCE "Fetch Lemire's SIMD-BP128 (simdcomp on AArch64) as a benchmark-only reference" OFF)
   add_executable(bitpack_bench bench/bench.cc)
   target_link_libraries(bitpack_bench PRIVATE bitpack)
+  # `unpack` throughput against the packed input's offset from the output (4 KiB aliasing).
+  add_executable(bitpack_unpack_alias bench/unpack_alias.cc)
+  target_link_libraries(bitpack_unpack_alias PRIVATE bitpack)
   if(BITPACK_BENCH_REFERENCE)
     # Benchmark-only: never part of the bitpack target.
     include(FetchContent)

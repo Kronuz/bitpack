@@ -3,6 +3,16 @@
 All notable changes to `bitpack` are recorded here, newest first. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-01
+
+### Added
+
+- `bench/unpack_alias.cc` (`bitpack_unpack_alias`) times `unpack` as the packed input's
+  offset against the output moves through a page, to look for 4 KiB aliasing, and at width
+  32 times a `memcpy` of the same bytes.
+- `docs/perf/unpack-loads.md`: the input-load counts and per-width timings behind the NEON
+  kernels, the SSE2 trial, and the variants that do not help.
+
 ## 2026-10-31
 
 ### Changed
