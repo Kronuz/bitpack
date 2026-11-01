@@ -25,6 +25,25 @@ compiles to straight-line code with immediate shifts. The row helpers are forced
 inline; without that, compilers outline the fold and decoding runs at less than
 half speed. Runtime dispatch is a 33-entry function table indexed by width.
 
+The NEON `unpack` kernels load each input word once. Row `r` reads word `r*B/32` and,
+when it spills, the next one, and the following row starts at that next word, so a
+kernel keeps the current word in a register and loads the next as a row crosses into
+it: one load per word, at most two words live, no stack traffic at any width.
+Reading each word where a row uses it is slower, because the input is read through
+`uint8_t`, which may alias the `uint32_t` output, and the compiler then loads the
+word again after every store (up to 32 loads of one word at width 1). Staging all B
+words in an array removes the reloads but outgrows a 16-register file from width 15.
+`bench/asm_check.cc` and `bench/asm_count.py` count the loads in the generated
+assembly (`ld/B` equal to B for NEON `unpack`).
+
+`unpack_delta` and the SSE2 kernels read each row's words where they are used. The
+delta kernels are bound by the carry chain, so loading once does not speed them up;
+x86 issues two L1 loads a cycle, and a load-once SSE2 kernel needs register copies for
+its two-operand shifts, so it does not decode faster either. Width 32 is the values
+themselves, so the NEON `unpack` copies the block with `memcpy`.
+`test/differential.cc` pins every kernel to `test/bitpack_v0.hh`, a frozen copy of
+the previous ones.
+
 ## Delta decoding
 
 `unpack_delta` adds a 4-lane prefix sum to each row (two shifted adds) plus the

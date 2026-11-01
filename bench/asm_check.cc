@@ -5,7 +5,8 @@
 //   c++ -std=c++20 -O3 -I. -S bench/asm_check.cc -o /tmp/asm_check.s
 //   python3 bench/asm_count.py /tmp/asm_check.s x86      # or arm64
 //
-// Each kernel should load exactly B words (the `ld/B` column) with no stack traffic.
+// The NEON unpack kernels load exactly B words (the `ld/B` column) with no stack traffic. The delta
+// kernels and the SSE2 kernels load per row (more than B); NEON width 32 unpack is a memcpy call.
 #include "bitpack.hh"
 
 #include <cstdint>

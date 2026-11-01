@@ -19,6 +19,13 @@ docs/bitpack.d2     README diagram; render: d2 --layout elk --sketch --theme 302
 - No pointer to packed data is ever dereferenced as `std::uint32_t*`; packed data
   may be unaligned.
 - Row helpers stay `BITPACK_INLINE`. Removing it halves decode speed.
+- The NEON `unpack` kernels load each input word once: `bench/asm_count.py` on the
+  `asm_check.cc` assembly shows `ld/B` equal to B and no stack traffic at every width.
+  Do not read a word where a row uses it, and do not stage all B words in an array
+  (ARCHITECTURE.md, "Code generation"). `unpack_delta` and the SSE2 kernels keep the
+  row-wise loads.
+- `test/bitpack_v0.hh` is frozen. A change to a kernel passes `bitpack_differential`
+  against it, or the difference is deliberate and listed in the test.
 
 ## Verify a change
 
