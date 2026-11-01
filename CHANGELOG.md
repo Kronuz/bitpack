@@ -5,6 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-11-01
 
+### Changed
+
+- `bitpack_bench` stops, naming the width, when the reference codec packs different bytes from
+  `pack` instead of printing `no` in its `same` column and timing the row.
+
 ### Added
 
 - `bench/unpack_alias.cc` (`bitpack_unpack_alias`) times `unpack` as the packed input's

@@ -110,6 +110,10 @@ int main() {
 		std::vector<std::uint8_t> theirs(packed.size());
 		for (std::size_t b = 0; b < blocks; ++b) { reference::pack(values.data() + b * 128, theirs.data() + b * stride, bits); }
 		bool same = std::equal(packed.begin(), packed.end() - 16, theirs.begin());
+		if (!same) {
+			std::fprintf(stderr, "width %u: the reference packs different bytes; the row is void\n", bits);
+			return 1;
+		}
 		auto ref = ints_per_ns([&] {
 			for (std::size_t b = 0; b < blocks; ++b) { reference::unpack(packed.data() + b * stride, out.data() + b * 128, bits); }
 			sink = sink + out[7];
