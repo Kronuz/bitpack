@@ -93,14 +93,17 @@ Not for:
 
 ## ⚡ Performance
 
-Decoding, in integers per nanosecond, with cache-resident blocks (`bench/bench.cc`, the best
-of two runs, Apple clang `-O3`), against Lemire's reference at a pinned commit:
-[simdcomp](https://github.com/lemire/simdcomp) on the Apple M4 Pro (NEON) and
-[SIMD-BP128](https://github.com/lemire/SIMDCompressionAndIntersection) on the Intel Core
-i9-9980HK (SSE2). Both hosts are shared with other work, so the absolute numbers are
-indicative; each row compares the codecs in the same run.
+`bench/bench.cc` decodes cache-resident blocks of 128 integers packed at each bit width and
+reports integers per nanosecond (higher is faster), the best of nine trials per cell. `unpack`
+is `bitpack::unpack`. The comparator is Lemire's SIMD bit-packing codec in the form each
+architecture has: [simdcomp](https://github.com/lemire/simdcomp) at `d530177` (NEON) on the
+Apple M4 Pro, and the SIMD-BP128 of
+[SIMDCompressionAndIntersection](https://github.com/lemire/SIMDCompressionAndIntersection) at
+`b809f38` (SSE2) on the Intel Core i9-9980HK. Both pack the same integers into the same bytes,
+which the benchmark checks at every width before it times a row. Both hosts are shared with other
+work, so the absolute numbers are indicative; each row compares the codecs in the same run.
 
-| Bits | M4 Pro `unpack` | simdcomp | i9-9980HK `unpack` | SIMD-BP128 |
+| Bits | `unpack`, M4 Pro | simdcomp, M4 Pro | `unpack`, i9-9980HK | SIMD-BP128, i9-9980HK |
 |---:|---:|---:|---:|---:|
 | 1 | 27.46 | 25.84 | 9.86 | 9.85 |
 | 8 | 21.23 | 21.22 | 9.13 | 9.30 |
@@ -108,11 +111,12 @@ indicative; each row compares the codecs in the same run.
 | 24 | 15.08 | 14.23 | 8.26 | 8.47 |
 | 32 | 21.25 | 12.97 | 8.21 | 10.73 |
 
-Over widths 1 to 31, `unpack` averages 1.00 times simdcomp on the M4 Pro and 0.99 times
-SIMD-BP128 on the i9-9980HK. `unpack_delta` is bound by its carry chain: 3.4 integers per ns
-on the M4 Pro and 4.6 to 5.4 on the i9-9980HK, 1.01 and 1.03 times the references' delta
-decoders. Width 32 is a copy, which the SSE2 kernel does row by row.
-[docs/perf/unpack-loads.md](docs/perf/unpack-loads.md) has every width.
+Over widths 1 to 31, `unpack` averages 1.00 times simdcomp's speed on the M4 Pro and 0.99
+times SIMD-BP128's on the i9-9980HK. `unpack_delta`, which decodes and prefix-sums a block, is
+bound by its carry chain: 3.4 integers per ns on the M4 Pro and 4.6 to 5.4 on the i9-9980HK,
+1.01 and 1.03 times the references' delta decoders. Width 32 is a copy, which the SSE2 kernel
+does row by row. [docs/perf/unpack-loads.md](docs/perf/unpack-loads.md) has every width. Apple
+clang 17.0.0 at `-O3` on macOS 26.7 (M4 Pro) and macOS 15.8 (i9-9980HK):
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBITPACK_BENCH_REFERENCE=ON
