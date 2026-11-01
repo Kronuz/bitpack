@@ -7,165 +7,151 @@ Part of [Kronuz C++ Libraries](https://github.com/Kronuz/cpp-libraries), a colle
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
 ![Header-only](https://img.shields.io/badge/header--only-yes-green.svg)
 
-Bit packing for blocks of 128 unsigned 32-bit integers, for C++20, decoding at
-SIMD-BP128 speed. It is the integer codec under search-engine postings: doc-id
-deltas, term frequencies, and positions.
+Header-only SIMD bit packing for C++20: 128-integer blocks with FOR and PFOR codecs,
+byte-identical to SIMD-BP128. Integer `j` of a block lives in lane `j % 4`, so one 4-lane
+register decodes four integers in order and the delta prefix sum runs in the register. It is
+the integer codec under search-engine postings: doc-id deltas, term frequencies and
+positions.
 
 ![bitpack: 128 integers in four lanes, packed at b bits into 16 × b bytes](docs/bitpack.svg)
 
 ## ✨ Highlights
 
-One header, `bitpack.hh`:
-
-- `pack` / `unpack` a block of 128 integers at a fixed bit width (0 to 32). A block
-  at width `b` takes exactly `16 * b` bytes.
-- `unpack_delta` decodes 128 deltas and prefix-sums them onto a base in the same
-  pass, which is how sorted doc ids come back.
-- `encode_for`, `encode_pfor`, and `decode`: block codecs with a one-byte header.
-  FOR packs every value at the block's maximum width. PFOR picks the width that
-  minimizes the encoded size and stores the few larger values as exceptions. A
-  block whose values are all equal (for example, all frequencies 1) encodes in
-  5 bytes.
-- `encoded_size` reads an encoded block's size from its headers without decoding
-  it, for stepping over blocks laid out back to back.
-
-SSE2 on x86-64 and NEON on AArch64 decode four integers per instruction; a portable
-path covers everything else. All three read and write the same bytes.
-
-## 📦 Installation
-
-Requires a C++20 compiler and a little-endian host (x86-64 or AArch64); CMake 3.14
-or newer for the CMake route. CI builds it on Linux (x86_64, arm64), macOS (arm64,
-x86_64), and FreeBSD, plus ASan, UBSan, and TSan builds.
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(bitpack
-  GIT_REPOSITORY https://github.com/Kronuz/bitpack.git
-  GIT_TAG        main)
-FetchContent_MakeAvailable(bitpack)
-
-target_link_libraries(my_app PRIVATE bitpack::bitpack)
-```
+- **Fixed-width blocks.** `pack` and `unpack` move a block of 128 integers at a width from 0
+  to 32 bits; a block at width `b` takes exactly `16 * b` bytes.
+- **Delta decoding in one pass.** `unpack_delta` decodes 128 deltas and prefix-sums them onto
+  a base, which is how sorted doc ids come back.
+- **FOR and PFOR codecs.** `encode_for`, `encode_pfor` and `decode` write and read a block
+  with a one-byte header. PFOR picks the width that minimizes the encoded size and stores the
+  few larger values as exceptions; a block of equal values takes 5 bytes.
+- **Skippable.** `encoded_size` reads an encoded block's size from its headers without
+  decoding it, for stepping over blocks laid out back to back.
+- **Three paths, one format.** SSE2 on x86-64 and NEON on AArch64 decode four integers per
+  instruction, a portable path covers the rest, and all three write the same bytes as
+  Lemire's SIMD-BP128.
+- **Safe decoding.** `decode` and `decode_delta` return 0 for a malformed or truncated block,
+  on arbitrary input.
+- **64-bit values.** `pack` and `unpack` also take blocks of `std::uint64_t`, as two 32-bit
+  halves.
 
 ## 🚀 Quick start
 
 ```cpp
 #include "bitpack.hh"
 
-std::uint32_t ids[128] = { /* increasing doc ids */ };
-std::uint32_t deltas[128];
-bitpack::delta_encode(/*base*/ 0, ids, deltas);
+#include <cstdio>
 
-std::uint8_t buf[bitpack::max_encoded_bytes];
-std::size_t size = bitpack::encode_pfor(deltas, buf);   // header + packed bits (+ exceptions)
+int main() {
+	std::uint32_t ids[128];
+	for (std::uint32_t i = 0; i < 128; ++i) { ids[i] = 1000 + 3 * i; }   // increasing doc ids
 
-std::uint32_t back[128];
-bitpack::decode_delta(buf, size, /*base*/ 0, back);      // back == ids; 0 if malformed
+	std::uint32_t deltas[128];
+	bitpack::delta_encode(/*base*/ 0, ids, deltas);
+
+	std::uint8_t buf[bitpack::max_encoded_bytes];
+	std::size_t size = bitpack::encode_pfor(deltas, buf);   // header, packed bits, exceptions
+
+	std::uint32_t back[128];
+	std::size_t used = bitpack::decode_delta(buf, size, /*base*/ 0, back);   // 0 if malformed
+	std::printf("%zu bytes, %zu read, last id %u\n", size, used, back[127]);
+	// 37 bytes, 37 read, last id 1381
+}
 ```
 
-Fixed-width calls skip the header:
+Fixed-width calls skip the header: `bitpack::pack(deltas, bits, packed)` and
+`bitpack::unpack_delta(packed, bits, base, out)`, with `bits` from `bitpack::max_bits` and
+`packed` sized by `bitpack::packed_bytes(bits)`.
 
-```cpp
-unsigned bits = bitpack::max_bits(deltas);
-std::uint8_t packed[bitpack::packed_bytes(32)];
-bitpack::pack(deltas, bits, packed);
-bitpack::unpack_delta(packed, bits, 0, back);
+## 📦 Installation
+
+Requires a C++20 compiler, CMake 3.14 or newer, and a little-endian host (x86-64 or AArch64);
+it has no dependencies. CI builds it on Linux (x86_64, arm64), macOS (arm64, x86_64), and
+FreeBSD, plus ASan, UBSan, and TSan builds.
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(bitpack
+  GIT_REPOSITORY https://github.com/Kronuz/bitpack.git
+  GIT_TAG        ba5788c200b571b8a98631a33733eebafa18571a)  # main tracks the tip
+FetchContent_MakeAvailable(bitpack)
+
+target_link_libraries(my_app PRIVATE bitpack::bitpack)
 ```
 
-## 🧩 Layout
+Then `#include "bitpack.hh"`.
 
-Integer `j` lives in lane `j % 4`, row `j / 4`. Each lane packs its 32 rows into
-`b` 32-bit words, and word `w` of the four lanes is 128-bit word `w`. One 4-lane
-register therefore decodes integers `4r .. 4r+3` in order, and the delta prefix sum
-runs in the register. The bytes are identical to Lemire's SIMD-BP128 layout; the
-benchmark checks this at every width.
+## 🎯 When to use it
+
+Use it for postings, id lists and other runs of small integers that are decoded in hot loops.
+
+Not for:
+
+- Big-endian hosts: the packed words are little-endian on disk, and only x86-64 and AArch64
+  are supported.
+- Tails shorter than 128 integers: blocks are exactly 128, so a shorter tail belongs to a
+  variable-length integer codec such as [varint](https://github.com/Kronuz/varint).
 
 ## ⚡ Performance
 
-Decoding, in integers per nanosecond, with cache-resident blocks (`bench/bench.cc`, the
-best of two runs, Apple clang `-O3`). Both hosts are shared with other work, so absolute
-numbers are indicative; each row compares the codecs in the same run.
+Decoding, in integers per nanosecond, with cache-resident blocks (`bench/bench.cc`, the best
+of two runs, Apple clang `-O3`), against Lemire's reference at a pinned commit:
+[simdcomp](https://github.com/lemire/simdcomp) on the Apple M4 Pro (NEON) and
+[SIMD-BP128](https://github.com/lemire/SIMDCompressionAndIntersection) on the Intel Core
+i9-9980HK (SSE2). Both hosts are shared with other work, so the absolute numbers are
+indicative; each row compares the codecs in the same run.
 
-Apple M4 Pro (NEON), against lemire/simdcomp:
+| Bits | M4 Pro `unpack` | simdcomp | i9-9980HK `unpack` | SIMD-BP128 |
+|---:|---:|---:|---:|---:|
+| 1 | 27.46 | 25.84 | 9.86 | 9.85 |
+| 8 | 21.23 | 21.22 | 9.13 | 9.30 |
+| 16 | 17.39 | 17.56 | 8.79 | 8.85 |
+| 24 | 15.08 | 14.23 | 8.26 | 8.47 |
+| 32 | 21.25 | 12.97 | 8.21 | 10.73 |
 
-| Bits | `unpack` | `unpack_delta` | Scalar | simdcomp | simdcomp/D1 |
-|---:|---:|---:|---:|---:|---:|
-| 1 | 27.46 | 3.44 | 6.46 | 25.84 | 3.39 |
-| 4 | 23.81 | 3.43 | 3.81 | 24.25 | 3.40 |
-| 8 | 21.23 | 3.43 | 3.14 | 21.22 | 3.42 |
-| 12 | 19.73 | 3.39 | 2.01 | 19.54 | 3.40 |
-| 16 | 17.39 | 3.47 | 3.13 | 17.56 | 3.42 |
-| 20 | 15.51 | 3.41 | 1.77 | 16.63 | 3.38 |
-| 24 | 15.08 | 3.43 | 1.84 | 14.23 | 3.42 |
-| 32 | 21.25 | 3.44 | 5.49 | 12.97 | 12.80 |
-
-Intel i9-9980HK (SSE2), against lemire's SIMD-BP128:
-
-| Bits | `unpack` | `unpack_delta` | Scalar | SIMD-BP128 | SIMD-BP128/D1 |
-|---:|---:|---:|---:|---:|---:|
-| 1 | 9.86 | 5.11 | 3.62 | 9.85 | 5.12 |
-| 4 | 9.66 | 5.13 | 1.61 | 9.65 | 4.64 |
-| 8 | 9.13 | 4.64 | 1.39 | 9.30 | 4.65 |
-| 12 | 8.92 | 4.91 | 0.97 | 8.93 | 4.79 |
-| 16 | 8.79 | 4.70 | 3.51 | 8.85 | 4.68 |
-| 20 | 8.45 | 4.78 | 0.90 | 8.87 | 4.09 |
-| 24 | 8.26 | 4.66 | 0.86 | 8.47 | 4.59 |
-| 32 | 8.21 | 5.37 | 3.37 | 10.73 | 8.05 |
-
-Over widths 1 to 31, `unpack` averages 1.00× simdcomp and `unpack_delta` 1.01× its D1
-decoder on the M4 Pro; on the i9 `unpack` averages 0.99× SIMD-BP128 and `unpack_delta`
-1.03×. `unpack_delta` is bound by its carry chain (3.4 integers per ns on the M4 Pro at
-every width). Width 32 is a copy: NEON `unpack` uses `memcpy`, the SSE2 kernel copies
-row by row (0.77× SIMD-BP128), and simdcomp's D1 decoder at width 32 copies without
-adding the base, so its figure there is not comparable. Reproduce with:
+Over widths 1 to 31, `unpack` averages 1.00 times simdcomp on the M4 Pro and 0.99 times
+SIMD-BP128 on the i9-9980HK. `unpack_delta` is bound by its carry chain: 3.4 integers per ns
+on the M4 Pro and 4.6 to 5.4 on the i9-9980HK, 1.01 and 1.03 times the references' delta
+decoders. Width 32 is a copy, which the SSE2 kernel does row by row.
+[docs/perf/unpack-loads.md](docs/perf/unpack-loads.md) has every width.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBITPACK_BENCH_REFERENCE=ON
-cmake --build build && build/bitpack_bench
+cmake --build build
+build/bitpack_bench
 ```
 
-`BITPACK_BENCH_REFERENCE` fetches lemire/simdcomp (BSD-3) on AArch64 and
-lemire/SIMDCompressionAndIntersection (Apache-2.0) on x86-64, for the benchmark only; the
-library never links them. `-DFETCHCONTENT_SOURCE_DIR_SIMDCOMP_REF=<dir>` uses a local
-simdcomp on AArch64.
+`BITPACK_BENCH_REFERENCE` fetches the reference for the benchmark only; the library never
+links it.
+
+## 📚 Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): the layout, the SIMD paths and the codecs.
+- [docs/perf/unpack-loads.md](docs/perf/unpack-loads.md): how the unpack kernels read their
+  input, per-width numbers, and the variants that do not help.
+- [CHANGELOG.md](CHANGELOG.md): changes by date, with their measurements.
+- [AGENTS.md](AGENTS.md): repository map and invariants.
+- [Catalog entry](https://github.com/Kronuz/cpp-libraries/blob/main/AGENTS.md#bitpack):
+  include line, target and key API.
 
 ## 🛠️ Building and testing
 
 ```sh
-cmake -S . -B build && cmake --build build && ctest --test-dir build
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
 ```
 
-The tests round-trip every width at every position, require SIMD and scalar output
-to be byte-identical, and exercise FOR, PFOR, constant blocks, and delta decoding.
-`bitpack_portable_test` builds with `BITPACK_NO_SIMD` to cover the portable path.
-`bitpack_differential` compares `pack`, `unpack` and `unpack_delta` with a frozen copy of the
-previous kernels (`test/bitpack_v0.hh`) at every width, in the SIMD and portable builds.
-`bench/asm_count.py` counts the input loads of each unpack kernel in the generated assembly.
-
-## 🎯 When to use it
-
-- ✅ Postings, id lists, and other runs of small integers, decoded in hot loops.
-- ❌ Big-endian hosts, or variable-length tails; see the limits below.
-
-### Limits
-
-- Little-endian hosts only (x86-64, AArch64): the on-disk words are little-endian.
-- Blocks are exactly 128 integers. Shorter tails belong to a variable-length
-  integer codec such as [varint](https://github.com/Kronuz/varint).
-
-## 📚 Documentation
-
-- [ARCHITECTURE.md](ARCHITECTURE.md): the layout, the SIMD paths, and the codecs.
-- [AGENTS.md](AGENTS.md): repository map and invariants.
-- [docs/perf/unpack-loads.md](docs/perf/unpack-loads.md): how the unpack kernels read their input, per-width numbers, and the variants that do not help.
-- [CHANGELOG.md](CHANGELOG.md): what changed, with the timings.
+The tests round-trip every width at every position, require the SIMD and portable output to be
+byte-identical (`bitpack_portable_test` builds with `BITPACK_NO_SIMD`), and compare the kernels
+with a frozen copy at every width. `-DBITPACK_BENCH_REFERENCE=ON` adds the reference to the
+benchmark, and `-DBITPACK_FUZZ=ON` builds the libFuzzer target.
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. The encoded bytes are a storage format and
-must not change; read [AGENTS.md](AGENTS.md) first. CI must pass on every
-platform.
+The encoded bytes are a storage format and must not change. Read [AGENTS.md](AGENTS.md) and
+the catalog's
+[rules of engagement](https://github.com/Kronuz/cpp-libraries/blob/main/AGENTS.md#rules-of-engagement)
+before opening a pull request; CI must pass on every platform.
 
 ## 📄 License
 
