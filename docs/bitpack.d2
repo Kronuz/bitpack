@@ -1,6 +1,8 @@
 # bitpack: 128 integers in four lanes; one SIMD register decodes four in order.
-# Render: d2 --layout elk --sketch --theme 302 docs/bitpack.d2 docs/bitpack.svg
-vars: { d2-config: { layout-engine: elk; theme-id: 302; sketch: true; pad: 24 } }
+# Render: d2 docs/bitpack.d2 docs/bitpack.svg
+vars: { d2-config: { layout-engine: elk; theme-id: 302; sketch: true; pad: 24; theme-overrides: { B1: "#8C7B7E"; B2: "#C25B73"; N2: "#C25B73" } } }
+style.fill: transparent
+
 direction: right
 block: "128 × uint32\nat b bits each"
 lanes: four lanes {
