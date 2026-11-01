@@ -122,16 +122,10 @@ inline void unpack_scalar(const std::uint8_t* in, std::uint32_t* out) noexcept {
 	}
 }
 
-// The unpack kernels walk a block's rows in order. Row r needs input word row::word and, when it
-// spills, the next one, and the following row then starts at that next word (a row advances by at
-// most one word), so a kernel holds one word in a register (`cur`), loads each input word exactly
-// once, and never has more than two live. The input is read through uint8_t (or __m128i), which may
-// alias the uint32_t output, so a word read where it is used is reloaded after every store: 44 vector
-// loads for 13 words at B = 13 (one per row plus one per spilling row), 32 loads of the single word
-// at B = 1. Staging all B words in an array avoids that but outgrows the register file (SSE2's 16
-// registers spill from B = 15).
-
 #if BITPACK_SSE
+
+// Each row loads the words it uses. Keeping one word in a register removes those loads but does
+// not decode faster on x86 (two L1 loads a cycle) and slows some unpack_delta widths.
 
 template <unsigned B, unsigned R>
 BITPACK_INLINE __m128i unpack_row(const __m128i* in, __m128i mask) noexcept {
@@ -232,8 +226,9 @@ BITPACK_INLINE uint32x4_t unpack_row(const std::uint8_t* in, uint32x4_t mask) no
 	return v;
 }
 
-// Row R of the block. `cur` holds word row<B,R>::word on entry and the next row's word on
-// return; load(i) reads input word i.
+// Row R reads word row::word and, when it spills, the next one, where the following row starts.
+// `cur` holds the current word: each input word is loaded once, at most two live. (Loading it where
+// a row uses it reloads it after every store: the uint8_t input may alias the output.) load(i) reads word i.
 template <unsigned B, unsigned R, typename Load>
 BITPACK_INLINE uint32x4_t unpack_row(const Load& load, uint32x4_t& cur, uint32x4_t mask) noexcept {
 	using row = detail::row<B, R>;
