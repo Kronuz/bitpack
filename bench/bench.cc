@@ -1,5 +1,5 @@
 // Decode throughput per width: bitpack's SIMD and scalar paths, and (with
-// BITPACK_BENCH_REFERENCE) Lemire's SIMD-BP128 and SIMD-BP128/D1 on the same bytes.
+// BITPACK_BENCH_REFERENCE) Lemire's SIMD-BP128 and SIMD-BP128/D1 (simdcomp on AArch64) on the same bytes.
 #include "bitpack.hh"
 
 #include <algorithm>
@@ -9,9 +9,43 @@
 #include <vector>
 
 #if BITPACK_BENCH_REFERENCE
+#if BITPACK_BENCH_SIMDCOMP
+// AArch64: lemire/simdcomp, which carries its own NEON shim.
+extern "C" {
+#include "simdbitpacking.h"
+#include "simdintegratedbitpacking.h"
+}
+namespace reference {
+inline void pack(const std::uint32_t* in, std::uint8_t* out, unsigned bits) { simdpackwithoutmask(in, reinterpret_cast<__m128i*>(out), bits); }
+inline void unpack(const std::uint8_t* in, std::uint32_t* out, unsigned bits) { simdunpack(reinterpret_cast<const __m128i*>(in), out, bits); }
+struct delta_state {
+	std::uint32_t init = 0;
+	void unpack(const std::uint8_t* in, std::uint32_t* out, unsigned bits) {
+		simdunpackd1(init, reinterpret_cast<const __m128i*>(in), out, bits);
+		init = out[127];
+	}
+};
+}  // namespace reference
+#else
+// x86-64: lemire/SIMDCompressionAndIntersection (SIMD-BP128).
 #include "simdbitpackinghelpers.h"
 #include "deltatemplates.h"
 #include "simdintegratedbitpacking.h"
+namespace reference {
+inline void pack(const std::uint32_t* in, std::uint8_t* out, unsigned bits) {
+	SIMDCompressionLib::ArrayDispatch::SIMDpackwithoutmask(in, reinterpret_cast<__m128i*>(out), bits);
+}
+inline void unpack(const std::uint8_t* in, std::uint32_t* out, unsigned bits) {
+	SIMDCompressionLib::ArrayDispatch::SIMDunpack(reinterpret_cast<const __m128i*>(in), out, bits);
+}
+struct delta_state {
+	__m128i init = _mm_setzero_si128();
+	void unpack(const std::uint8_t* in, std::uint32_t* out, unsigned bits) {
+		init = SIMDCompressionLib::SIMDiunpack<SIMDCompressionLib::RegularDeltaSIMD>(init, reinterpret_cast<const __m128i*>(in), out, bits);
+	}
+};
+}  // namespace reference
+#endif
 #endif
 
 using clock_type = std::chrono::steady_clock;
@@ -74,22 +108,15 @@ int main() {
 		std::printf("%5u %10.2f %10.2f %10.2f", bits, simd, delta, scalar);
 #if BITPACK_BENCH_REFERENCE
 		std::vector<std::uint8_t> theirs(packed.size());
-		for (std::size_t b = 0; b < blocks; ++b) {
-			SIMDCompressionLib::ArrayDispatch::SIMDpackwithoutmask(values.data() + b * 128, reinterpret_cast<__m128i*>(theirs.data() + b * stride), bits);
-		}
+		for (std::size_t b = 0; b < blocks; ++b) { reference::pack(values.data() + b * 128, theirs.data() + b * stride, bits); }
 		bool same = std::equal(packed.begin(), packed.end() - 16, theirs.begin());
 		auto ref = ints_per_ns([&] {
-			for (std::size_t b = 0; b < blocks; ++b) {
-				SIMDCompressionLib::ArrayDispatch::SIMDunpack(reinterpret_cast<const __m128i*>(packed.data() + b * stride), out.data() + b * 128, bits);
-			}
+			for (std::size_t b = 0; b < blocks; ++b) { reference::unpack(packed.data() + b * stride, out.data() + b * 128, bits); }
 			sink = sink + out[7];
 		}, out.size());
 		auto ref_d1 = ints_per_ns([&] {
-			__m128i init = _mm_setzero_si128();
-			for (std::size_t b = 0; b < blocks; ++b) {
-				init = SIMDCompressionLib::SIMDiunpack<SIMDCompressionLib::RegularDeltaSIMD>(
-					init, reinterpret_cast<const __m128i*>(packed.data() + b * stride), out.data() + b * 128, bits);
-			}
+			reference::delta_state state;
+			for (std::size_t b = 0; b < blocks; ++b) { state.unpack(packed.data() + b * stride, out.data() + b * 128, bits); }
 			sink = sink + out[7];
 		}, out.size());
 		std::printf(" %10.2f %10.2f %8s", ref, ref_d1, same ? "yes" : "no");

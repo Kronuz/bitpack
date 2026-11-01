@@ -38,25 +38,41 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_link_options(bitpack_fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
   endif()
 
-  option(BITPACK_BENCH_REFERENCE "Fetch FastPFor's SIMD-BP128 as a benchmark-only reference" OFF)
+  option(BITPACK_BENCH_REFERENCE "Fetch Lemire's SIMD-BP128 (simdcomp on AArch64) as a benchmark-only reference" OFF)
   add_executable(bitpack_bench bench/bench.cc)
   target_link_libraries(bitpack_bench PRIVATE bitpack)
   if(BITPACK_BENCH_REFERENCE)
-    # Benchmark-only (Apache-2.0): never part of the bitpack target.
+    # Benchmark-only: never part of the bitpack target.
     include(FetchContent)
-    FetchContent_Declare(simdcomp_ref
-      GIT_REPOSITORY https://github.com/lemire/SIMDCompressionAndIntersection.git
-      GIT_TAG        b809f38b57fa65384166c7c1d83056395a1ff3e5)  # the commit the README numbers use
     if(POLICY CMP0169)
       cmake_policy(SET CMP0169 OLD)  # populate only; the reference is not a CMake subproject here
     endif()
-    FetchContent_Populate(simdcomp_ref)
-    add_library(simdcomp_ref STATIC
-      ${simdcomp_ref_SOURCE_DIR}/src/simdbitpacking.cpp
-      ${simdcomp_ref_SOURCE_DIR}/src/simdintegratedbitpacking.cpp
-      ${simdcomp_ref_SOURCE_DIR}/src/usimdbitpacking.cpp)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|ARM64|aarch64)$")
+      # simdcomp (BSD-3) ships a NEON shim; -DFETCHCONTENT_SOURCE_DIR_SIMDCOMP_REF=<dir> uses a local copy.
+      enable_language(C)
+      FetchContent_Declare(simdcomp_ref
+        GIT_REPOSITORY https://github.com/lemire/simdcomp.git
+        GIT_TAG        d5301778fe5045ca8099252de5a6ed8016a287df)
+      FetchContent_Populate(simdcomp_ref)
+      add_library(simdcomp_ref STATIC
+        ${simdcomp_ref_SOURCE_DIR}/src/simdbitpacking.c
+        ${simdcomp_ref_SOURCE_DIR}/src/simdintegratedbitpacking.c
+        ${simdcomp_ref_SOURCE_DIR}/src/simdcomputil.c)
+      target_compile_options(simdcomp_ref PRIVATE -O3)
+      target_compile_definitions(bitpack_bench PRIVATE BITPACK_BENCH_SIMDCOMP=1)
+    else()
+      # SIMD-BP128 (Apache-2.0)
+      FetchContent_Declare(simdcomp_ref
+        GIT_REPOSITORY https://github.com/lemire/SIMDCompressionAndIntersection.git
+        GIT_TAG        b809f38b57fa65384166c7c1d83056395a1ff3e5)  # the commit the README numbers use
+      FetchContent_Populate(simdcomp_ref)
+      add_library(simdcomp_ref STATIC
+        ${simdcomp_ref_SOURCE_DIR}/src/simdbitpacking.cpp
+        ${simdcomp_ref_SOURCE_DIR}/src/simdintegratedbitpacking.cpp
+        ${simdcomp_ref_SOURCE_DIR}/src/usimdbitpacking.cpp)
+      target_compile_options(simdcomp_ref PUBLIC -msse4.1)
+    endif()
     target_include_directories(simdcomp_ref PUBLIC ${simdcomp_ref_SOURCE_DIR}/include)
-    target_compile_options(simdcomp_ref PUBLIC -msse4.1)
     target_link_libraries(bitpack_bench PRIVATE simdcomp_ref)
     target_compile_definitions(bitpack_bench PRIVATE BITPACK_BENCH_REFERENCE=1)
   endif()
