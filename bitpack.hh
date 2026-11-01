@@ -255,6 +255,8 @@ template <unsigned B>
 inline void unpack_simd(const std::uint8_t* in, std::uint32_t* out) noexcept {
 	if constexpr (B == 0) {
 		for (unsigned r = 0; r < 32; ++r) { vst1q_u32(out + 4 * r, vdupq_n_u32(0)); }
+	} else if constexpr (B == 32) {
+		std::memcpy(out, in, packed_bytes(32));  // width 32 is the values themselves
 	} else {
 		unpack_rows<B>(in, out, vdupq_n_u32(low_mask<B>), std::make_integer_sequence<unsigned, 32>{});
 	}
