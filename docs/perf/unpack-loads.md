@@ -63,11 +63,11 @@ A single run is not enough on a shared host. The best of nine 50 ms trials (`ben
 
 To reproduce, build `bitpack_bench` from two checkouts of the library, alternate the two binaries ten times, and compare each row's ratio per pair.
 
-## Input offset against the output (arm64)
+## Input offset against the output
 
 `bench/unpack_alias.cc` times `unpack` with the output page aligned and the packed input starting at each of the 64 cache-line offsets of a page, to look for 4 KiB aliasing between the input loads and the output stores.
 
-Apple M4 Pro, Apple clang 17 `-O3`, `bitpack_unpack_alias 5 6 13 24 31 32`, two runs. Integers per ns over the 64 offsets (best of four 20 ms trials each):
+Apple M4 Pro (NEON), Apple clang 17 `-O3`, `bitpack_unpack_alias 5 6 13 24 31 32`, two runs. Integers per ns over the 64 offsets (best of four 20 ms trials each):
 
 | Bits | median | lowest | highest | highest / lowest |
 |---:|---:|---:|---:|---:|
@@ -78,7 +78,9 @@ Apple M4 Pro, Apple clang 17 `-O3`, `bitpack_unpack_alias 5 6 13 24 31 32`, two 
 | 31 | 13.18, 13.09 | 12.77, 12.74 | 13.54, 13.32 | 1.06×, 1.05× |
 | 32 | 21.56, 21.50 | 19.97, 20.61 | 22.26, 22.23 | 1.11×, 1.08× |
 
-The 5% to 16% spread has no shape. The best and the worst offsets of a width differ between the two runs (width 5 is fastest at offset 0 in the first run and slowest there in the second), and the first and second halves of the page average the same. The NEON kernels do not depend on the relative address of the input and the output. A width that reads below its neighbours in one build of `bench/bench.cc` (width 5 is 0.92× in two builds) is the layout of that binary, not an aliasing effect that a different input address would remove.
+On the M4 the 5% to 16% spread has no shape. The best and the worst offsets of a width differ between the two runs (width 5 is fastest at offset 0 in the first run and slowest there in the second), and the first and second halves of the page average the same. The NEON kernels do not depend on the relative address of the input and the output. A width that reads below its neighbours in one build of `bench/bench.cc` (width 5 is 0.92× in two builds) is the layout of that binary, not an aliasing effect that a different input address would remove.
+
+The Intel Core i9-9980HK (SSE2) with Apple clang 17 and gcc 16, the same command and two runs per compiler, shows the same: highest over lowest offset is 1.05× to 1.12× at widths 5 to 31 and 1.10× to 1.14× at width 32, the best and worst offsets move from run to run, and the two halves of the page average within 2% at widths 5 to 31. Width 32 reads 2% to 4% lower in the second half of the page in all four runs.
 
 ## SSE2 keeps the row-wise loads
 
@@ -136,4 +138,21 @@ Per-width medians of the paired ratios for the load-once SSE2 kernel against the
 
 ## SSE2 width 32
 
-SIMD-BP128 copies width 32 1.3× faster than the SSE2 kernel on the i9 (the SSE2 `unpack` copies it row by row; the README table has 8.21 against 10.73 integers per ns). A `memcpy` for `B == 32` in the SSE2 `unpack` (three lines next to the existing zero-width branch) is the candidate fix.
+The SSE2 `unpack` copies a width 32 block row by row, and SIMD-BP128 copies it 1.3× faster on the i9 (8.21 against 10.73 integers per ns in the README table). The `memcpy` column of `bench/unpack_alias.cc` times a `memcpy` of the block's 512 bytes in the same loop as `unpack` at width 32, with the input at each of the 64 page offsets. Median over the offsets, integers per ns, three runs each:
+
+| Machine, compiler | `unpack` | `memcpy` | memcpy / unpack |
+|---|---:|---:|---:|
+| Intel Core i9-9980HK, Apple clang 17 | 6.95, 7.38, 7.48 | 8.13, 9.02, 9.22 | 1.17×, 1.22×, 1.23× |
+| Intel Core i9-9980HK, gcc 16 | 7.40, 7.25, 7.30 | 8.65, 8.49, 8.61 | 1.17×, 1.17×, 1.18× |
+| AMD EPYC 7763 (shared Linux VM), clang 12 | 8.67, 8.64, 8.50 | 10.37, 10.36, 10.19 | 1.20×, 1.20×, 1.20× |
+| AMD EPYC 7763 (shared Linux VM), gcc 11 | 8.63, 8.85, 8.63 | 4.89, 4.81, 4.82 | 0.57×, 0.54×, 0.56× |
+
+A `memcpy` is 17% to 23% faster with clang and gcc 16, and 43% to 46% slower with gcc 11, which expands the constant-length copy inline to `rep movsq` (clang 12 calls the C library's `memcpy`). The change is three lines next to the zero-width branch of the SSE2 `unpack`:
+
+```cpp
+} else if constexpr (B == 32) {
+	std::memcpy(out32, in32, packed_bytes(32));  // width 32 is the values themselves
+}
+```
+
+It stays out of the library until a form of the copy wins on every toolchain the library builds with.

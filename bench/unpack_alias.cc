@@ -4,8 +4,9 @@
 // address matches a recent store in its low 12 bits can be held back by the store (4 KiB
 // aliasing). The output is page aligned here and the input starts at every 64-byte offset
 // of a page in turn, so a row that depends on the relative address shows as a spread across
-// offsets while a row that does not stays flat. At width 32 a second column times memcpy of
-// the same bytes, which is what the packed block is at that width.
+// offsets while a row that does not stays flat. At width 32 a second column times a memcpy of
+// the block's 512 bytes (a constant length, as the library would write it), which is what the
+// packed block is at that width.
 //
 // usage: bitpack_unpack_alias [BITS...]   (default 5 13 31 32)
 // output: "bits offset integers/ns" per offset, then one summary line per width.
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
 			std::printf("%u %u %.3f\n", bits, off, r);
 			if (bits == 32) {
 				copy_rows.add(ints_per_ns([&] {
-					for (std::size_t b = 0; b < blocks; ++b) { std::memcpy(out + b * 128, packed + b * stride, stride); }
+					for (std::size_t b = 0; b < blocks; ++b) { std::memcpy(out + b * 128, packed + b * stride, bitpack::packed_bytes(32)); }
 					sink = sink + out[7];
 				}, blocks * bitpack::block_size));
 			}

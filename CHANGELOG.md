@@ -13,6 +13,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/perf/unpack-loads.md`: the input-load counts and per-width timings behind the NEON
   kernels, the SSE2 trial, and the variants that do not help.
 
+### Not changed
+
+- Width 32 `unpack` on SSE2 still copies row by row. A `memcpy` of the block is 1.17× to
+  1.23× faster with Apple clang 17 and gcc 16 on the i9-9980HK and 1.20× with clang 12 on an
+  EPYC 7763, and 0.54× to 0.57× with gcc 11 there, which expands the copy to `rep movsq`
+  (`bench/unpack_alias.cc`, three runs each).
+
 ## 2026-10-31
 
 ### Changed
