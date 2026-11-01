@@ -83,30 +83,52 @@ benchmark checks this at every width.
 
 ## ⚡ Performance
 
-Decoding, in integers per nanosecond, on an Intel i9-9980HK (macOS, Apple clang
-`-O3`, cache-resident blocks). The host was running other builds, so absolute
-numbers are indicative; each row compares both codecs in the same run.
+Decoding, in integers per nanosecond, with cache-resident blocks (`bench/bench.cc`, the
+best of two runs, Apple clang `-O3`). Both hosts are shared with other work, so absolute
+numbers are indicative; each row compares the codecs in the same run.
+
+Apple M4 Pro (NEON), against lemire/simdcomp:
+
+| Bits | `unpack` | `unpack_delta` | Scalar | simdcomp | simdcomp/D1 |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 27.46 | 3.44 | 6.46 | 25.84 | 3.39 |
+| 4 | 23.81 | 3.43 | 3.81 | 24.25 | 3.40 |
+| 8 | 21.23 | 3.43 | 3.14 | 21.22 | 3.42 |
+| 12 | 19.73 | 3.39 | 2.01 | 19.54 | 3.40 |
+| 16 | 17.39 | 3.47 | 3.13 | 17.56 | 3.42 |
+| 20 | 15.51 | 3.41 | 1.77 | 16.63 | 3.38 |
+| 24 | 15.08 | 3.43 | 1.84 | 14.23 | 3.42 |
+| 32 | 21.25 | 3.44 | 5.49 | 12.97 | 12.80 |
+
+Intel i9-9980HK (SSE2), against lemire's SIMD-BP128:
 
 | Bits | `unpack` | `unpack_delta` | Scalar | SIMD-BP128 | SIMD-BP128/D1 |
 |---:|---:|---:|---:|---:|---:|
-| 1 | 9.37 | 4.82 | 3.48 | 9.21 | 4.94 |
-| 4 | 8.21 | 4.55 | 1.42 | 8.08 | 4.10 |
-| 8 | 7.43 | 4.22 | 1.22 | 7.54 | 4.11 |
-| 12 | 7.27 | 4.31 | 0.85 | 7.43 | 4.16 |
-| 16 | 8.07 | 4.55 | 3.37 | 8.04 | 4.62 |
-| 20 | 7.74 | 4.37 | 0.85 | 8.09 | 3.81 |
-| 32 | 6.71 | 5.04 | 3.17 | 7.94 | 6.76 |
+| 1 | 9.86 | 5.11 | 3.62 | 9.85 | 5.12 |
+| 4 | 9.66 | 5.13 | 1.61 | 9.65 | 4.64 |
+| 8 | 9.13 | 4.64 | 1.39 | 9.30 | 4.65 |
+| 12 | 8.92 | 4.91 | 0.97 | 8.93 | 4.79 |
+| 16 | 8.79 | 4.70 | 3.51 | 8.85 | 4.68 |
+| 20 | 8.45 | 4.78 | 0.90 | 8.87 | 4.09 |
+| 24 | 8.26 | 4.66 | 0.86 | 8.47 | 4.59 |
+| 32 | 8.21 | 5.37 | 3.37 | 10.73 | 8.05 |
 
-Across all 32 widths, `unpack` averages 0.99× SIMD-BP128 and `unpack_delta` 1.02×
-SIMD-BP128/D1. Reproduce with:
+Over widths 1 to 31, `unpack` averages 1.00× simdcomp and `unpack_delta` 1.01× its D1
+decoder on the M4 Pro; on the i9 `unpack` averages 0.99× SIMD-BP128 and `unpack_delta`
+1.03×. `unpack_delta` is bound by its carry chain (3.4 integers per ns on the M4 Pro at
+every width). Width 32 is a copy: NEON `unpack` uses `memcpy`, the SSE2 kernel copies
+row by row (0.77× SIMD-BP128), and simdcomp's D1 decoder at width 32 copies without
+adding the base, so its figure there is not comparable. Reproduce with:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBITPACK_BENCH_REFERENCE=ON
 cmake --build build && build/bitpack_bench
 ```
 
-`BITPACK_BENCH_REFERENCE` fetches lemire/SIMDCompressionAndIntersection
-(Apache-2.0) for the benchmark only; the library never links it.
+`BITPACK_BENCH_REFERENCE` fetches lemire/simdcomp (BSD-3) on AArch64 and
+lemire/SIMDCompressionAndIntersection (Apache-2.0) on x86-64, for the benchmark only; the
+library never links them. `-DFETCHCONTENT_SOURCE_DIR_SIMDCOMP_REF=<dir>` uses a local
+simdcomp on AArch64.
 
 ## 🛠️ Building and testing
 
@@ -136,6 +158,7 @@ previous kernels (`test/bitpack_v0.hh`) at every width, in the SIMD and portable
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): the layout, the SIMD paths, and the codecs.
 - [AGENTS.md](AGENTS.md): repository map and invariants.
+- [CHANGELOG.md](CHANGELOG.md): what changed, with the timings.
 
 ## 🤝 Contributing
 
